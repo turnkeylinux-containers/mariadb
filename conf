@@ -1,0 +1,22 @@
+#!/bin/bash
+set -exuo pipefail
+
+echo "mariadb-server-${PRODUCT_VERSION} mariadb-server-${PRODUCT_VERSION}/root_password password unused" | debconf-set-selections
+echo "mariadb-server-${PRODUCT_VERSION} mariadb-server-${PRODUCT_VERSION}/root_password_again password unused" | debconf-set-selections
+
+apt-get install "mariadb-server-${PRODUCT_VERSION}"
+
+for i in /var/lib/mysql /run/mysqld; do
+    rm -rf "$i"
+    mkdir -p "$i"
+    chown -R mariadb:mariadb "$i"
+done
+
+ln -s /etc/mysql/mariadb.cnf /etc/mysql/my.cnf
+sed -i 's/^\(bind-address\|log\|user\)/#\1/g' /etc/mysql/mariadb.cnf /etc/mysql/mariadb.conf.d/*
+
+cat << EOF >> /etc/mysql/conf.d/mysqld-docker.cnf
+[mysqld]
+skip-host-cache
+skip-name-resolve
+EOF

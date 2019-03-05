@@ -1,0 +1,18 @@
+{
+    "meta": {
+        "name": "mariadb",
+        "version": "10.1",
+        "containers": [
+            {
+                "name": "mariadb",
+                "version": "10.1",
+                "ports": {
+                    "3306": "tcp"
+                },
+                "cpu": 256,
+                "ram": 512
+            }
+
+        ]
+    }
+}
