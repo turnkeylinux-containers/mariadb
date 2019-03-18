@@ -1,0 +1,29 @@
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: qrntz/tklc:circleci
+    working_directory: ~/product
+    environment:
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Setup Environment
+          command: |
+            jq -r '"export PRODUCT_NAME=" + .meta.name' manifest.json >> $BASH_ENV
+            jq -r '"export PRODUCT_VERSION=" + .meta.version' manifest.json >> $BASH_ENV
+            jq -r '.build | to_entries | .[] | ("--build-arg=" + .key + "=" + .value)' manifest.json | tr '\n' ' ' | sed "s/^/export BUILD_ARGS='/; s/ $/'/" >> $BASH_ENV
+      - run: |
+          docker login -u $DOCKER_USER -p $DOCKER_PASS
+          docker pull qrntz/keyhole-builder:master
+          mkdir -p build
+          cp -r overlay build/overlay
+          cp /usr/share/tklc/conf/* build/overlay/usr/share/tklc/conf/
+          tar czf - . | docker run --name keyhole -i qrntz/keyhole-builder:master
+          mkdir -p build/overlay/usr/local/sbin
+          docker cp keyhole:/go/src/keyhole/keyhole ./build/overlay/usr/local/sbin/keyhole
+          cat /usr/share/tklc/skel/Dockerfile.head Dockerfile.tail > ./build/Dockerfile
+          docker build -t qrntz/nginx:test $BUILD_ARGS build
+          docker push qrntz/nginx:test
