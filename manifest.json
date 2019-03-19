@@ -1,11 +1,13 @@
 {
     "meta": {
-        "name": "mariadb",
-        "version": "10.1",
+        "build_args": {
+            "PRODUCT_NAME": "mariadb",
+            "PRODUCT_VERSION": "10.3"
+        },
         "containers": [
             {
                 "name": "mariadb",
-                "version": "10.1",
+                "version": "10.3",
                 "ports": {
                     "3306": "tcp"
                 },
