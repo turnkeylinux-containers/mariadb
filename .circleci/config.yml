@@ -12,14 +12,14 @@ jobs:
       - run:
           name: Setup Environment
           command: |
-            jq -r '.meta.build_args | to_entries | .[] | if (.key | startswith("PRODUCT_")) then "export \(.key)=\"\(.value)\"" else empty end' manifest.json >> $BASH_ENV
-            jq -r '"export BUILD_ARGS='\''" + (.meta | .build_args? | .? | to_entries | [ .[] | ("--build-arg=" + .key + "=" + .value) ] | join(" ")) + "'\''"' manifest.json >> $BASH_ENV
+            jq -r '.meta.build_args | to_entries | ((map("--build-arg=\(.key)=\(.value)") | join(" ") as $x | "export BUILD_ARGS=\"\($x)\""), (.[] | "export \(.key)=\"\(.value)\""))' manifest.json >> $BASH_ENV
       - run: |
           authdata="$( aws ecr get-authorization-token --query 'authorizationData[0]' )"
           repo="$( jq -r '.proxyEndpoint' <<< "$authdata" | sed 's|^https://||' )"
           jq -r '.authorizationToken' <<< "$authdata" | base64 -d | cut -d: -f2 | docker login -u AWS --password-stdin "$repo"
-          docker pull "$repo/keyhole-builder:master"
           mkdir -p build
+          docker pull "$repo/keyhole-builder:master"
+          if [[ -n $BASE_IMAGE ]]; then docker pull "$repo/$BASE_IMAGE"; fi
           if [[ -d overlay ]]; then cp -r overlay build/overlay; else mkdir -p build/overlay; fi
           mkdir -p build/overlay/usr/share/tklc/conf
           cp /usr/share/tklc/conf/* build/overlay/usr/share/tklc/conf/
