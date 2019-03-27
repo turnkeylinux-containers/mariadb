@@ -15,15 +15,24 @@ jobs:
             jq -r '.meta.build_args | to_entries | .[] | if (.key | startswith("PRODUCT_")) then "export \(.key)=\"\(.value)\"" else empty end' manifest.json >> $BASH_ENV
             jq -r '"export BUILD_ARGS='\''" + (.meta | .build_args? | .? | to_entries | [ .[] | ("--build-arg=" + .key + "=" + .value) ] | join(" ")) + "'\''"' manifest.json >> $BASH_ENV
       - run: |
-          docker login -u $DOCKER_USER -p $DOCKER_PASS
-          docker pull qrntz/keyhole-builder:master
+          authdata="$( aws ecr get-authorization-token --query 'authorizationData[0]' )"
+          repo="$( jq -r '.proxyEndpoint' <<< "$authdata" | sed 's|^https://||' )"
+          jq -r '.authorizationToken' <<< "$authdata" | base64 -d | cut -d: -f2 | docker login -u AWS --password-stdin "$repo"
+          docker pull "$repo/keyhole-builder:master"
           mkdir -p build
           if [[ -d overlay ]]; then cp -r overlay build/overlay; else mkdir -p build/overlay; fi
           mkdir -p build/overlay/usr/share/tklc/conf
           cp /usr/share/tklc/conf/* build/overlay/usr/share/tklc/conf/
-          tar czf - . | docker run --name keyhole -i qrntz/keyhole-builder:master
+          tar czf - . | docker run --name keyhole -i "$repo/keyhole-builder:master"
           mkdir -p build/overlay/usr/local/sbin
           docker cp keyhole:/go/src/keyhole/keyhole ./build/overlay/usr/local/sbin/keyhole
           cat /usr/share/tklc/skel/Dockerfile.head Dockerfile.tail > ./build/Dockerfile
-          docker build -t qrntz/$PRODUCT_NAME:$PRODUCT_VERSION $BUILD_ARGS build
-          docker push qrntz/$PRODUCT_NAME:$PRODUCT_VERSION
+          docker build -t "$repo/$PRODUCT_NAME:$PRODUCT_VERSION" $BUILD_ARGS build
+          docker push "$repo/$PRODUCT_NAME:$PRODUCT_VERSION"
+
+workflows:
+  version: 2
+  workflow:
+    jobs:
+      - build:
+          context: "awsecr"
