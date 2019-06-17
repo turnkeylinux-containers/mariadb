@@ -9,24 +9,44 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - run: |
-          aws ecr get-authorization-token --query 'authorizationData[0]' | jq -r '("export AUTHTOKEN=\(.authorizationToken)", .proxyEndpoint | ltrimstr("https://") | "export REPO=\(.)")' >> $BASH_ENV
-          source $BASH_ENV
-          jq -r '.meta.build_args | to_entries | ((map("--build-arg=\(.key)=\(.value)") | join(" ") as $x | "export BUILD_ARGS=\"\($x)\""), (.[] | "export \(.key)=\"\(.value)\""))' manifest.json >> $BASH_ENV
-      - run: |
-          echo "$AUTHTOKEN" | base64 -d | cut -d: -f2 | docker login -u AWS --password-stdin "$REPO"
-          mkdir -p build
-          docker pull "$REPO/keyhole-builder:master"
-          if [[ -n $BASE_IMAGE ]]; then docker pull "$BASE_IMAGE"; fi
-          if [[ -d overlay ]]; then cp -r overlay build/overlay; else mkdir -p build/overlay; fi
-          mkdir -p build/overlay/usr/share/tklc/conf
-          cp /usr/share/tklc/conf/* build/overlay/usr/share/tklc/conf/
-          tar czf - . | docker run --name keyhole -i "$REPO/keyhole-builder:master"
-          mkdir -p build/overlay/usr/local/sbin
-          docker cp keyhole:/go/src/keyhole/keyhole ./build/overlay/usr/local/sbin/keyhole
-          cat /usr/share/tklc/skel/Dockerfile.head Dockerfile.tail > ./build/Dockerfile
-          docker build -t "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION" $BUILD_ARGS build
-          docker push "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION"
+      - run:
+          name: Set up environment variables
+          command: |
+            aws ecr get-authorization-token --query 'authorizationData[0]' | jq -r '("export AUTHTOKEN=\(.authorizationToken)", .proxyEndpoint | ltrimstr("https://") | "export REPO=\(.)")' >> $BASH_ENV
+            source $BASH_ENV
+            jq -r '.meta.build_args | to_entries | ((map("--build-arg=\(.key)=\(.value)") | join(" ") as $x | "export BUILD_ARGS=\"\($x)\""), (.[] | "export \(.key)=\"\(.value)\""))' manifest.json >> $BASH_ENV
+      - run:
+          name: Build & push product image
+          command: |
+            echo "$AUTHTOKEN" | base64 -d | cut -d: -f2 | docker login -u AWS --password-stdin "$REPO"
+            mkdir -p build
+            docker pull "$REPO/keyhole-builder:master"
+            if [[ -n $BASE_IMAGE ]]; then docker pull "$BASE_IMAGE"; fi
+            if [[ -d overlay ]]; then cp -r overlay build/overlay; else mkdir -p build/overlay; fi
+            mkdir -p build/overlay/usr/share/tklc/conf
+            cp /usr/share/tklc/conf/* build/overlay/usr/share/tklc/conf/
+            tar czf - . | docker run --name keyhole -i "$REPO/keyhole-builder:master"
+            mkdir -p build/overlay/usr/local/sbin
+            docker cp keyhole:/go/src/keyhole/keyhole ./build/overlay/usr/local/sbin/keyhole
+            cat /usr/share/tklc/skel/Dockerfile.head Dockerfile.tail > ./build/Dockerfile
+            docker build -t "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION" $BUILD_ARGS build
+            docker push "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION"
+            if [[ -z $UPDATE_LATEST || $UPDATE_LATEST = 'yes' ]]; then
+              docker tag "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION" "$REPO/$PRODUCT_NAME:latest"
+              docker push "$REPO/$PRODUCT_NAME:latest"
+            fi
+      - run:
+          name: Test deployment
+          command: |
+            STACK_NAME="$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
+            aws cloudformation create-stack \
+            --capabilities CAPABILITY_IAM \
+            --stack-name "$STACK_NAME" \
+            --parameters 'ParameterKey=KeyName,ParameterValue=test' \
+            --template-body "$( jq -f /usr/share/tklc/templates/ecs.jq manifest.json | jq -scf /usr/share/tklc/templates/cf.jq )"
+            aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME"
+            aws cloudformation delete-stack --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
+            aws cloudformation wait stack-delete-complete --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
 
 workflows:
   version: 2
