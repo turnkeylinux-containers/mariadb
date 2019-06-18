@@ -35,18 +35,18 @@ jobs:
               docker tag "$REPO/$PRODUCT_NAME:$PRODUCT_VERSION" "$REPO/$PRODUCT_NAME:latest"
               docker push "$REPO/$PRODUCT_NAME:latest"
             fi
-      - run:
-          name: Test deployment
-          command: |
-            STACK_NAME="$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
-            aws cloudformation create-stack \
-            --capabilities CAPABILITY_IAM \
-            --stack-name "$STACK_NAME" \
-            --parameters 'ParameterKey=KeyName,ParameterValue=test' \
-            --template-body "$( jq -f /usr/share/tklc/templates/ecs.jq manifest.json | jq -scf /usr/share/tklc/templates/cf.jq )"
-            aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME"
-            aws cloudformation delete-stack --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
-            aws cloudformation wait stack-delete-complete --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
+#     - run:
+#         name: Test deployment
+#         command: |
+#           STACK_NAME="$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
+#           aws cloudformation create-stack \
+#           --capabilities CAPABILITY_IAM \
+#           --stack-name "$STACK_NAME" \
+#           --parameters 'ParameterKey=KeyName,ParameterValue=test' \
+#           --template-body "$( jq -f /usr/share/tklc/templates/ecs.jq manifest.json | jq -scf /usr/share/tklc/templates/cf.jq )"
+#           aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME"
+#           aws cloudformation delete-stack --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
+#           aws cloudformation wait stack-delete-complete --stack-name "$PRODUCT_NAME-$CIRCLE_BUILD_NUM"
 
 workflows:
   version: 2
